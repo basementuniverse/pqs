@@ -17,19 +17,27 @@ const { glob } = require('glob');
 const pkg = require('../package.json');
 const { v4: uuid } = require('uuid');
 const { format } = require('date-fns');
+const TemplateSource = require('./template-source');
 
 const execAsync = promisify(exec);
 
+/**
+ * Main PQS class for project quick start functionality
+ */
 class PQS {
   constructor() {
     this.config = null;
     this.templates = new Map();
   }
 
-  // Load configuration from various locations
+  /**
+   * Load configuration from various locations
+   * Searches for config files in order: current directory, home directory, etc.
+   */
   async loadConfig() {
     const configPaths = [
       path.join(process.cwd(), 'pqs.config.json'),
+      path.join(os.homedir(), '.pqs', 'pqs.config.json'),
       path.join(os.homedir(), '.pqs.config.json'),
       '/etc/pqs.config.json',
     ];
@@ -55,52 +63,47 @@ class PQS {
     );
   }
 
-  // Discover templates by finding pqs.config.js files
+  /**
+   * Discover templates by finding pqs.config.js files in all configured locations
+   */
   async discoverTemplates() {
     this.templates.clear();
 
-    for (const location of this.config.templateLocations) {
-      const expandedLocation = location.replace('~', os.homedir());
+    // Create TemplateSource instances for all configured locations
+    const templateSources = TemplateSource.fromArray(
+      this.config.templateLocations
+    );
 
+    for (const source of templateSources) {
       try {
-        if (!(await fs.pathExists(expandedLocation))) {
+        // Check if the source is available before trying to discover templates
+        if (!(await source.isAvailable())) {
+          const displayInfo = source.getDisplayInfo();
+          console.warn(
+            `Warning: Template source not available: ${displayInfo.display}`
+          );
           continue;
         }
 
-        // Look for pqs.config.js files in the location and immediate
-        // subdirectories
-        const configFiles = await glob('**/pqs.config.js', {
-          cwd: expandedLocation,
-          absolute: true,
-          maxDepth: 2,
-        });
+        // Discover templates in this source
+        const templates = await source.discoverTemplates();
 
-        for (const configFile of configFiles) {
-          try {
-            // Clear require cache to get fresh config
-            delete require.cache[configFile];
-            const templateConfig = require(configFile);
-            const templateDir = path.dirname(configFile);
-
-            this.templates.set(templateConfig.name, {
-              ...templateConfig,
-              path: templateDir,
-            });
-          } catch (error) {
-            console.warn(
-              `Warning: Failed to load template config at ${configFile}: ${error.message}`
-            );
-          }
+        // Add discovered templates to our collection
+        for (const template of templates) {
+          this.templates.set(template.name, template);
         }
       } catch (error) {
+        const displayInfo = source.getDisplayInfo();
         console.warn(
-          `Warning: Failed to search for templates in ${expandedLocation}: ${error.message}`
+          `Warning: Failed to discover templates in ${displayInfo.display}: ${error.message}`
         );
       }
     }
   }
 
-  // List available templates
+  /**
+   * List all available templates to the console
+   */
   listTemplates() {
     if (this.templates.size === 0) {
       console.log('No templates found.');
@@ -109,13 +112,27 @@ class PQS {
 
     console.log('Available templates:');
     for (const [name, template] of this.templates) {
+      let sourceInfo = '';
+      if (template.isRemote && template.sourceInfo) {
+        sourceInfo = ` (remote: ${template.sourceInfo.host}/${template.sourceInfo.full})`;
+      } else if (!template.isRemote) {
+        sourceInfo = ` (local: ${template.source})`;
+      }
+
       console.log(
-        `  ${name}${template.description ? ` - ${template.description}` : ''}`
+        `  ${name}${
+          template.description ? ` - ${template.description}` : ''
+        }${sourceInfo}`
       );
     }
   }
 
-  // Transform text based on transformation functions
+  /**
+   * Transform text based on transformation functions
+   * @param {string} text - The text to transform
+   * @param {string} transformation - The transformation type (UPPER, LOWER, CAMEL, etc.)
+   * @returns {string} The transformed text
+   */
   transformText(text, transformation) {
     switch (transformation.toUpperCase()) {
       case 'UPPER':
@@ -159,12 +176,19 @@ class PQS {
     }
   }
 
-  // Generate UUID
+  /**
+   * Generate a UUID v4
+   * @returns {string} A new UUID
+   */
   generateUUID() {
     return uuid();
   }
 
-  // Format date using date-fns
+  /**
+   * Format the current date using date-fns with backward compatibility for legacy patterns
+   * @param {string} pattern - The date format pattern (supports both date-fns and legacy formats)
+   * @returns {string} The formatted date string
+   */
   formatDate(pattern) {
     const now = new Date();
 
@@ -203,7 +227,12 @@ class PQS {
     }
   }
 
-  // Perform placeholder substitutions
+  /**
+   * Perform placeholder substitutions in content using {{PQS:placeholder}} syntax
+   * @param {string} content - The content to process
+   * @param {object} values - The values to substitute
+   * @returns {string} The content with substitutions performed
+   */
   performSubstitutions(content, values) {
     return content.replace(/\{\{PQS:([^}]+)\}\}/g, (match, placeholder) => {
       // Handle transformations
@@ -229,7 +258,11 @@ class PQS {
     });
   }
 
-  // Get command line arguments for questions
+  /**
+   * Extract command line arguments that correspond to template questions
+   * @param {object} options - The command line options object
+   * @returns {object} Filtered arguments excluding built-in CLI options
+   */
   getCliArgs(options) {
     const args = {};
 
@@ -245,7 +278,12 @@ class PQS {
     return args;
   }
 
-  // Ask user questions
+  /**
+   * Ask user questions defined in the template, skipping those provided via CLI
+   * @param {object} template - The template object containing questions
+   * @param {object} cliArgs - Command line arguments that may answer questions
+   * @returns {object} The answers to all questions
+   */
   async askQuestions(template, cliArgs) {
     const answers = {};
 
@@ -317,7 +355,14 @@ class PQS {
     return answers;
   }
 
-  // Copy template files with exclusions
+  /**
+   * Copy template files to output directory with exclusion patterns
+   * @param {string} templatePath - Source template directory path
+   * @param {string} outputPath - Destination directory path
+   * @param {string[]} excludePatterns - Array of glob patterns to exclude
+   * @param {boolean} dryRun - Whether to perform a dry run (list files only)
+   * @returns {string[]} Array of files that were copied (or would be copied in dry run)
+   */
   async copyTemplate(
     templatePath,
     outputPath,
@@ -377,7 +422,13 @@ class PQS {
     return filesToCopy;
   }
 
-  // Process replace steps
+  /**
+   * Process a replace step that substitutes placeholders in files
+   * @param {object} step - The replace step configuration
+   * @param {string} outputPath - The output directory path
+   * @param {object} values - Values for placeholder substitution
+   * @param {boolean} dryRun - Whether to perform a dry run
+   */
   async processReplaceStep(step, outputPath, values, dryRun = false) {
     const filesToProcess = [];
 
@@ -407,7 +458,13 @@ class PQS {
     }
   }
 
-  // Process command steps
+  /**
+   * Process a command step that executes a shell command
+   * @param {object} step - The command step configuration
+   * @param {string} outputPath - The output directory path to run command in
+   * @param {object} answers - User answers for condition evaluation
+   * @param {boolean} dryRun - Whether to perform a dry run
+   */
   async processCommandStep(step, outputPath, answers, dryRun = false) {
     // Check condition if present
     if (step.condition && !step.condition(answers)) {
@@ -438,7 +495,14 @@ class PQS {
     }
   }
 
-  // Process copy steps
+  /**
+   * Process a copy step that copies specific files or directories from template
+   * @param {object} step - The copy step configuration
+   * @param {string} templatePath - The template source directory path
+   * @param {string} outputPath - The output directory path
+   * @param {object} answers - User answers for condition evaluation
+   * @param {boolean} dryRun - Whether to perform a dry run
+   */
   async processCopyStep(
     step,
     templatePath,
@@ -499,7 +563,12 @@ class PQS {
     }
   }
 
-  // Helper method to get files to copy with exclusions
+  /**
+   * Helper method to get files to copy with exclusions applied
+   * @param {string} sourcePath - The source directory path
+   * @param {string[]} excludePatterns - Array of glob patterns to exclude
+   * @returns {string[]} Array of file paths to copy
+   */
   async getFilesToCopy(sourcePath, excludePatterns) {
     const allFiles = await glob('**/*', {
       cwd: sourcePath,
@@ -524,7 +593,10 @@ class PQS {
     });
   }
 
-  // Collect all unique options from all templates
+  /**
+   * Collect all unique options from all templates for dynamic CLI setup
+   * @returns {Map} Map of option names to option configurations
+   */
   async collectTemplateOptions() {
     await this.loadConfig();
     await this.discoverTemplates();
@@ -569,7 +641,11 @@ class PQS {
     return allOptions;
   }
 
-  // Create a new project from template
+  /**
+   * Create a new project from a template
+   * @param {string} templateName - The name of the template to use
+   * @param {object} options - Command line options
+   */
   async createProject(templateName, options) {
     await this.loadConfig();
     await this.discoverTemplates();
@@ -674,7 +750,9 @@ class PQS {
   }
 }
 
-// CLI setup
+/**
+ * Set up the CLI with dynamic options based on available templates
+ */
 async function setupCLI() {
   const program = new Command();
   const pqs = new PQS();
@@ -757,7 +835,9 @@ async function setupCLI() {
   }
 }
 
-// Initialize CLI
+/**
+ * Initialize the CLI application
+ */
 setupCLI().catch(error => {
   console.error('Failed to setup CLI:', error.message);
   process.exit(1);
