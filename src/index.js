@@ -198,7 +198,7 @@ class PQS {
   }
 
   // Perform placeholder substitutions
-  performSubstitutions(content, answers) {
+  performSubstitutions(content, values) {
     return content.replace(/\{\{PQS:([^}]+)\}\}/g, (match, placeholder) => {
       // Handle transformations
       const transformMatch = placeholder.match(/^(\w+)\(([^)]+)\)$/);
@@ -209,14 +209,14 @@ class PQS {
           return this.formatDate(arg);
         } else if (transform === 'UUID') {
           return this.generateUUID();
-        } else if (answers[arg] !== undefined) {
-          return this.transformText(String(answers[arg]), transform);
+        } else if (values[arg] !== undefined) {
+          return this.transformText(String(values[arg]), transform);
         }
       }
 
       // Direct placeholder replacement
-      if (answers[placeholder] !== undefined) {
-        return String(answers[placeholder]);
+      if (values[placeholder] !== undefined) {
+        return String(values[placeholder]);
       }
 
       return match; // Leave unchanged if no replacement found
@@ -349,7 +349,7 @@ class PQS {
   }
 
   // Process replace steps
-  async processReplaceStep(step, outputPath, answers, dryRun = false) {
+  async processReplaceStep(step, outputPath, values, dryRun = false) {
     const filesToProcess = [];
 
     for (const filePattern of step.files) {
@@ -369,7 +369,7 @@ class PQS {
 
       try {
         const content = await fs.readFile(filePath, 'utf8');
-        const processedContent = this.performSubstitutions(content, answers);
+        const processedContent = this.performSubstitutions(content, values);
         await fs.writeFile(filePath, processedContent, 'utf8');
       } catch (error) {
         // Skip binary files or files we can't process
@@ -526,7 +526,10 @@ class PQS {
           await this.processReplaceStep(
             step,
             outputPath,
-            answers,
+            {
+              ...(template.values ?? {}),
+              ...answers,
+            },
             options.dryRun
           );
         } else if (step.type === 'command') {
