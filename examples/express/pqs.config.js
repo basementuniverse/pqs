@@ -1,9 +1,13 @@
 module.exports = {
-  name: "Simple JS Express Project",
-  shortName: 'js-express',
-  description: "A minimal JavaScript project template for testing PQS",
-  version: "1.0.0",
-
+  name: 'js-express',
+  description: 'A minimal JavaScript project template for testing PQS',
+  values: {
+    name: 'My JS Project',
+    version: '0.0.1',
+    description: 'A simple JavaScript project',
+    author: process.env.USER || 'Your Name',
+    initialiseGit: true,
+  },
   questions: [
     {
       type: 'input',
@@ -11,7 +15,6 @@ module.exports = {
       message: 'Project name:',
       argument: 'name',
       shortArgument: '-n',
-      default: 'my-js-project',
       validate: (input) => input.length > 0 || 'Project name is required',
     },
     {
@@ -20,7 +23,6 @@ module.exports = {
       message: 'Project description:',
       argument: 'description',
       shortArgument: '-d',
-      default: 'A simple JavaScript project',
     },
     {
       type: 'input',
@@ -28,25 +30,21 @@ module.exports = {
       message: 'Author:',
       argument: 'author',
       shortArgument: '-a',
-      default: process.env.USER || 'Your Name',
     },
     {
       type: 'confirm',
       name: 'initialiseGit',
-      message: 'Initialise git?',
+      message: 'Initialise git repository?',
       argument: 'git',
       shortArgument: '-g',
-      default: true,
     },
   ],
-
   exclude: [
     'pqs.config.js',
     'node_modules',
     '.git',
     '.DS_Store',
   ],
-
   steps: [
     {
       type: 'replace',
