@@ -22,7 +22,7 @@ class PQS {
     const configPaths = [
       path.join(process.cwd(), 'pqs.config.json'),
       path.join(os.homedir(), '.pqs.config.json'),
-      '/etc/pqs.config.json'
+      '/etc/pqs.config.json',
     ];
 
     for (const configPath of configPaths) {
@@ -39,9 +39,11 @@ class PQS {
 
     // Default configuration if no config file found
     this.config = {
-      templateLocations: [path.join(os.homedir(), 'templates')]
+      templateLocations: [path.join(os.homedir(), 'templates')],
     };
-    console.log('No config file found, using default template location: ~/templates');
+    console.log(
+      'No config file found, using default template location: ~/templates'
+    );
   }
 
   // Discover templates by finding pqs.config.js files
@@ -50,7 +52,7 @@ class PQS {
 
     for (const location of this.config.templateLocations) {
       const expandedLocation = location.replace('~', os.homedir());
-      
+
       try {
         if (!(await fs.pathExists(expandedLocation))) {
           continue;
@@ -60,7 +62,7 @@ class PQS {
         const configFiles = await glob('**/pqs.config.js', {
           cwd: expandedLocation,
           absolute: true,
-          maxDepth: 2
+          maxDepth: 2,
         });
 
         for (const configFile of configFiles) {
@@ -69,17 +71,24 @@ class PQS {
             delete require.cache[configFile];
             const templateConfig = require(configFile);
             const templateDir = path.dirname(configFile);
-            
-            this.templates.set(templateConfig.shortName || templateConfig.name, {
-              ...templateConfig,
-              path: templateDir
-            });
+
+            this.templates.set(
+              templateConfig.shortName || templateConfig.name,
+              {
+                ...templateConfig,
+                path: templateDir,
+              }
+            );
           } catch (error) {
-            console.warn(`Warning: Failed to load template config at ${configFile}: ${error.message}`);
+            console.warn(
+              `Warning: Failed to load template config at ${configFile}: ${error.message}`
+            );
           }
         }
       } catch (error) {
-        console.warn(`Warning: Failed to search for templates in ${expandedLocation}: ${error.message}`);
+        console.warn(
+          `Warning: Failed to search for templates in ${expandedLocation}: ${error.message}`
+        );
       }
     }
   }
@@ -93,7 +102,9 @@ class PQS {
 
     console.log('Available templates:');
     for (const [name, template] of this.templates) {
-      console.log(`  ${name}${template.description ? ` - ${template.description}` : ''}`);
+      console.log(
+        `  ${name}${template.description ? ` - ${template.description}` : ''}`
+      );
     }
   }
 
@@ -105,23 +116,37 @@ class PQS {
       case 'LOWER':
         return text.toLowerCase();
       case 'CAMEL':
-        return text.replace(/[-_\s]+(.)?/g, (_, char) => char ? char.toUpperCase() : '');
+        return text.replace(/[-_\s]+(.)?/g, (_, char) =>
+          char ? char.toUpperCase() : ''
+        );
       case 'KEBAB':
-        return text.toLowerCase().replace(/[_\s]+/g, '-').replace(/[^a-z0-9-]/g, '');
+        return text
+          .toLowerCase()
+          .replace(/[_\s]+/g, '-')
+          .replace(/[^a-z0-9-]/g, '');
       case 'SNAKE':
-        return text.toLowerCase().replace(/[-\s]+/g, '_').replace(/[^a-z0-9_]/g, '');
+        return text
+          .toLowerCase()
+          .replace(/[-\s]+/g, '_')
+          .replace(/[^a-z0-9_]/g, '');
       case 'PASCAL':
-        return text.replace(/[-_\s]+(.)?/g, (_, char) => char ? char.toUpperCase() : '')
-                  .replace(/^(.)/, (_, char) => char.toUpperCase());
+        return text
+          .replace(/[-_\s]+(.)?/g, (_, char) =>
+            char ? char.toUpperCase() : ''
+          )
+          .replace(/^(.)/, (_, char) => char.toUpperCase());
       case 'TITLE':
-        return text.replace(/\w\S*/g, (txt) => 
-          txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+        return text.replace(
+          /\w\S*/g,
+          txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+        );
       case 'SLUG':
-        return text.toLowerCase()
-                  .replace(/[^a-z0-9\s-]/g, '')
-                  .replace(/\s+/g, '-')
-                  .replace(/-+/g, '-')
-                  .replace(/^-|-$/g, '');
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
       default:
         return text;
     }
@@ -129,11 +154,14 @@ class PQS {
 
   // Generate UUID
   generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+      /[xy]/g,
+      function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      }
+    );
   }
 
   // Format date
@@ -156,7 +184,7 @@ class PQS {
       const transformMatch = placeholder.match(/^(\w+)\(([^)]+)\)$/);
       if (transformMatch) {
         const [, transform, arg] = transformMatch;
-        
+
         if (transform === 'DATE') {
           return this.formatDate(arg);
         } else if (transform === 'UUID') {
@@ -165,12 +193,12 @@ class PQS {
           return this.transformText(String(answers[arg]), transform);
         }
       }
-      
+
       // Direct placeholder replacement
       if (answers[placeholder] !== undefined) {
         return String(answers[placeholder]);
       }
-      
+
       return match; // Leave unchanged if no replacement found
     });
   }
@@ -178,17 +206,25 @@ class PQS {
   // Get command line arguments for questions
   getCliArgs(options) {
     const args = {};
-    if (options.name) args.name = options.name;
-    if (options.description) args.description = options.description;
-    if (options.author) args.author = options.author;
-    if (options.git !== undefined) args.git = options.git;
+    if (options.name) {
+      args.name = options.name;
+    }
+    if (options.description) {
+      args.description = options.description;
+    }
+    if (options.author) {
+      args.author = options.author;
+    }
+    if (options.git !== undefined) {
+      args.git = options.git;
+    }
     return args;
   }
 
   // Ask user questions
   async askQuestions(template, cliArgs) {
     const answers = {};
-    
+
     for (const question of template.questions || []) {
       // Skip if provided via CLI
       if (cliArgs[question.argument] !== undefined) {
@@ -205,22 +241,22 @@ class PQS {
         if (question.type === 'confirm') {
           answer = await confirm({
             message: question.message,
-            default: question.default
+            default: question.default,
           });
         } else if (question.type === 'input') {
           answer = await input({
             message: question.message,
             default: question.default,
-            validate: question.validate
+            validate: question.validate,
           });
         } else if (question.type === 'select') {
           answer = await select({
             message: question.message,
             choices: question.choices,
-            default: question.default
+            default: question.default,
           });
         }
-        
+
         answers[question.name] = answer;
       } catch (error) {
         if (error.name === 'ExitPromptError') {
@@ -235,11 +271,16 @@ class PQS {
   }
 
   // Copy template files with exclusions
-  async copyTemplate(templatePath, outputPath, excludePatterns, dryRun = false) {
+  async copyTemplate(
+    templatePath,
+    outputPath,
+    excludePatterns,
+    dryRun = false
+  ) {
     const allFiles = await glob('**/*', {
       cwd: templatePath,
       dot: true,
-      nodir: true
+      nodir: true,
     });
 
     const filesToCopy = allFiles.filter(file => {
@@ -260,7 +301,7 @@ class PQS {
     for (const file of filesToCopy) {
       const srcPath = path.join(templatePath, file);
       const destPath = path.join(outputPath, file);
-      
+
       await fs.ensureDir(path.dirname(destPath));
       await fs.copy(srcPath, destPath);
     }
@@ -271,20 +312,22 @@ class PQS {
   // Process replace steps
   async processReplaceStep(step, outputPath, answers, dryRun = false) {
     const filesToProcess = [];
-    
+
     for (const filePattern of step.files) {
       const matchedFiles = await glob(filePattern, { cwd: outputPath });
       filesToProcess.push(...matchedFiles);
     }
 
     if (dryRun) {
-      console.log(`  Replace step would process files: ${filesToProcess.join(', ')}`);
+      console.log(
+        `  Replace step would process files: ${filesToProcess.join(', ')}`
+      );
       return;
     }
 
     for (const file of filesToProcess) {
       const filePath = path.join(outputPath, file);
-      
+
       try {
         const content = await fs.readFile(filePath, 'utf8');
         const processedContent = this.performSubstitutions(content, answers);
@@ -313,9 +356,15 @@ class PQS {
     }
 
     try {
-      const { stdout, stderr } = await execAsync(step.command, { cwd: outputPath });
-      if (stdout) console.log(stdout);
-      if (stderr) console.error(stderr);
+      const { stdout, stderr } = await execAsync(step.command, {
+        cwd: outputPath,
+      });
+      if (stdout) {
+        console.log(stdout);
+      }
+      if (stderr) {
+        console.error(stderr);
+      }
     } catch (error) {
       console.error(`Command failed: ${error.message}`);
     }
@@ -333,27 +382,40 @@ class PQS {
       return;
     }
 
-    const outputPath = path.resolve(options.output || process.cwd());
-
-    // Check if output directory exists and is not empty
-    if (await fs.pathExists(outputPath)) {
-      const files = await fs.readdir(outputPath);
-      if (files.length > 0 && !options.force) {
-        console.error(`Output directory ${outputPath} is not empty. Use --force to override.`);
-        return;
-      }
-    }
-
     console.log(`Creating project from template: ${template.name}`);
-    console.log(`Output directory: ${outputPath}`);
 
     if (options.dryRun) {
       console.log('\n--- DRY RUN MODE ---');
     }
 
-    // Ask questions
+    // Ask questions first to get the project name
     const cliArgs = this.getCliArgs(options);
     const answers = await this.askQuestions(template, cliArgs);
+
+    // Determine output path - use provided output or default to slugified project name
+    let outputPath;
+    if (options.output) {
+      outputPath = path.resolve(options.output);
+    } else {
+      // Find the project name from answers - look for common project name fields
+      const projectName =
+        answers.projectName || answers.name || answers.project || 'new-project';
+      const slugifiedName = this.transformText(projectName, 'SLUG');
+      outputPath = path.resolve(process.cwd(), slugifiedName);
+    }
+
+    // Check if output directory exists and is not empty
+    if (await fs.pathExists(outputPath)) {
+      const files = await fs.readdir(outputPath);
+      if (files.length > 0 && !options.force) {
+        console.error(
+          `Output directory ${outputPath} is not empty. Use --force to override.`
+        );
+        return;
+      }
+    }
+
+    console.log(`Output directory: ${outputPath}`);
 
     // Create output directory
     if (!options.dryRun) {
@@ -372,12 +434,22 @@ class PQS {
     // Process steps
     if (template.steps) {
       console.log('\nProcessing template steps...');
-      
+
       for (const step of template.steps) {
         if (step.type === 'replace') {
-          await this.processReplaceStep(step, outputPath, answers, options.dryRun);
+          await this.processReplaceStep(
+            step,
+            outputPath,
+            answers,
+            options.dryRun
+          );
         } else if (step.type === 'command') {
-          await this.processCommandStep(step, outputPath, answers, options.dryRun);
+          await this.processCommandStep(
+            step,
+            outputPath,
+            answers,
+            options.dryRun
+          );
         }
       }
     }
