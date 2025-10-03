@@ -9,6 +9,8 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const { glob } = require('glob');
 const pkg = require('../package.json');
+const { v4: uuid } = require('uuid');
+const { format } = require('date-fns');
 
 const execAsync = promisify(exec);
 
@@ -59,7 +61,8 @@ class PQS {
           continue;
         }
 
-        // Look for pqs.config.js files in the location and immediate subdirectories
+        // Look for pqs.config.js files in the location and immediate
+        // subdirectories
         const configFiles = await glob('**/pqs.config.js', {
           cwd: expandedLocation,
           absolute: true,
@@ -73,13 +76,10 @@ class PQS {
             const templateConfig = require(configFile);
             const templateDir = path.dirname(configFile);
 
-            this.templates.set(
-              templateConfig.shortName || templateConfig.name,
-              {
-                ...templateConfig,
-                path: templateDir,
-              }
-            );
+            this.templates.set(templateConfig.name, {
+              ...templateConfig,
+              path: templateDir,
+            });
           } catch (error) {
             console.warn(
               `Warning: Failed to load template config at ${configFile}: ${error.message}`
@@ -155,27 +155,46 @@ class PQS {
 
   // Generate UUID
   generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
-      /[xy]/g,
-      function (c) {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      }
-    );
+    return uuid();
   }
 
-  // Format date
+  // Format date using date-fns
   formatDate(pattern) {
     const now = new Date();
-    // Simple date formatting - you could use date-fns for more complex patterns
-    return pattern
-      .replace('YYYY', now.getFullYear())
-      .replace('MM', String(now.getMonth() + 1).padStart(2, '0'))
-      .replace('DD', String(now.getDate()).padStart(2, '0'))
-      .replace('HH', String(now.getHours()).padStart(2, '0'))
-      .replace('mm', String(now.getMinutes()).padStart(2, '0'))
-      .replace('ss', String(now.getSeconds()).padStart(2, '0'));
+
+    // Convert legacy patterns to date-fns format patterns for backward
+    // compatibility
+    const legacyPatterns = {
+      YYYY: 'yyyy',
+      MM: 'MM',
+      DD: 'dd',
+      HH: 'HH',
+      mm: 'mm',
+      ss: 'ss',
+    };
+
+    // Check if the pattern contains legacy patterns and convert them
+    let dateFnsPattern = pattern;
+    for (const [legacy, dateFns] of Object.entries(legacyPatterns)) {
+      dateFnsPattern = dateFnsPattern.replace(new RegExp(legacy, 'g'), dateFns);
+    }
+
+    try {
+      // Use date-fns format function
+      return format(now, dateFnsPattern);
+    } catch (error) {
+      // Fallback to original pattern if date-fns format fails
+      console.warn(
+        `Warning: Invalid date format pattern '${pattern}', using fallback`
+      );
+      return pattern
+        .replace('YYYY', now.getFullYear())
+        .replace('MM', String(now.getMonth() + 1).padStart(2, '0'))
+        .replace('DD', String(now.getDate()).padStart(2, '0'))
+        .replace('HH', String(now.getHours()).padStart(2, '0'))
+        .replace('mm', String(now.getMinutes()).padStart(2, '0'))
+        .replace('ss', String(now.getSeconds()).padStart(2, '0'));
+    }
   }
 
   // Perform placeholder substitutions
@@ -207,18 +226,16 @@ class PQS {
   // Get command line arguments for questions
   getCliArgs(options) {
     const args = {};
-    if (options.name) {
-      args.name = options.name;
+
+    // Copy all options to args, excluding the built-in CLI options
+    const builtInOptions = new Set(['output', 'force', 'dryRun']);
+
+    for (const [key, value] of Object.entries(options)) {
+      if (!builtInOptions.has(key) && value !== undefined) {
+        args[key] = value;
+      }
     }
-    if (options.description) {
-      args.description = options.description;
-    }
-    if (options.author) {
-      args.author = options.author;
-    }
-    if (options.git !== undefined) {
-      args.git = options.git;
-    }
+
     return args;
   }
 
@@ -227,13 +244,13 @@ class PQS {
     const answers = {};
 
     for (const question of template.questions || []) {
-      // Skip if provided via CLI
-      if (cliArgs[question.argument] !== undefined) {
+      // Skip if provided via CLI - check by argument name first, then by question name
+      if (question.argument && cliArgs[question.argument] !== undefined) {
         answers[question.name] = cliArgs[question.argument];
         continue;
       }
-      if (cliArgs[question.shortArgument] !== undefined) {
-        answers[question.name] = cliArgs[question.shortArgument];
+      if (cliArgs[question.name] !== undefined) {
+        answers[question.name] = cliArgs[question.name];
         continue;
       }
 
@@ -371,6 +388,51 @@ class PQS {
     }
   }
 
+  // Collect all unique options from all templates
+  async collectTemplateOptions() {
+    await this.loadConfig();
+    await this.discoverTemplates();
+
+    const allOptions = new Map();
+    const conflictingOptions = new Set([
+      'output',
+      'o',
+      'force',
+      'f',
+      'dry-run',
+      'd',
+    ]);
+
+    for (const [, template] of this.templates) {
+      if (template.questions) {
+        for (const question of template.questions) {
+          // Check for long argument
+          if (question.argument && !conflictingOptions.has(question.argument)) {
+            allOptions.set(question.argument, {
+              long: question.argument,
+              short: question.shortArgument,
+              description: question.message || `${question.name} option`,
+              name: question.name,
+            });
+          }
+
+          // Check for short argument (only if long argument doesn't conflict)
+          if (
+            question.shortArgument &&
+            !conflictingOptions.has(question.shortArgument) &&
+            !conflictingOptions.has(question.argument)
+          ) {
+            if (allOptions.has(question.argument)) {
+              allOptions.get(question.argument).short = question.shortArgument;
+            }
+          }
+        }
+      }
+    }
+
+    return allOptions;
+  }
+
   // Create a new project from template
   async createProject(templateName, options) {
     await this.loadConfig();
@@ -393,12 +455,14 @@ class PQS {
     const cliArgs = this.getCliArgs(options);
     const answers = await this.askQuestions(template, cliArgs);
 
-    // Determine output path - use provided output or default to slugified project name
+    // Determine output path - use provided output or default to slugified
+    // project name
     let outputPath;
     if (options.output) {
       outputPath = path.resolve(options.output);
     } else {
-      // Find the project name from answers - look for common project name fields
+      // Find the project name from answers - look for common project name
+      // fields
       const projectName =
         answers.projectName || answers.name || answers.project || 'new-project';
       const slugifiedName = this.transformText(projectName, 'SLUG');
@@ -464,59 +528,90 @@ class PQS {
 }
 
 // CLI setup
-const program = new Command();
-const pqs = new PQS();
+async function setupCLI() {
+  const program = new Command();
+  const pqs = new PQS();
 
-program
-  .name('pqs')
-  .description('PQS - Project Quick Start: Create projects from templates')
-  .version('1.0.0');
+  program
+    .name('pqs')
+    .description('PQS - Project Quick Start: Create projects from templates')
+    .version('1.0.0');
 
-program
-  .command('version')
-  .alias('v')
-  .description('Show version')
-  .action(() => {
-    console.log(`PQS version ${pkg.version}`);
-  });
+  program
+    .command('version')
+    .alias('v')
+    .description('Show version')
+    .action(() => {
+      console.log(`PQS version ${pkg.version}`);
+    });
 
-program
-  .command('list')
-  .alias('l')
-  .description('List available templates')
-  .action(async () => {
-    await pqs.loadConfig();
-    await pqs.discoverTemplates();
-    pqs.listTemplates();
-  });
+  program
+    .command('list')
+    .alias('l')
+    .description('List available templates')
+    .action(async () => {
+      await pqs.loadConfig();
+      await pqs.discoverTemplates();
+      pqs.listTemplates();
+    });
 
-program
-  .command('create <template>')
-  .alias('c')
-  .description('Create a new project from a template')
-  .option('-o, --output <directory>', 'Output directory')
-  .option('-f, --force', 'Force creation even if output directory is not empty')
-  .option('-d, --dry-run', 'Perform a dry run')
-  .option('-n, --name <name>', 'Project name')
-  .option('--description <description>', 'Project description')
-  .option('-a, --author <author>', 'Author name')
-  .option('-g, --git', 'Initialize git repository')
-  .action(async (template, options) => {
+  // Create the create command with dynamic options
+  const createCommand = program
+    .command('create <template>')
+    .alias('c')
+    .description('Create a new project from a template')
+    .option('-o, --output <directory>', 'Output directory')
+    .option(
+      '-f, --force',
+      'Force creation even if output directory is not empty'
+    )
+    .option('-d, --dry-run', 'Perform a dry run');
+
+  // Add dynamic options based on template configurations
+  try {
+    const templateOptions = await pqs.collectTemplateOptions();
+
+    for (const [optionName, optionConfig] of templateOptions) {
+      let optionFlag = `--${optionName}`;
+      if (optionConfig.short) {
+        optionFlag = `-${optionConfig.short}, --${optionName}`;
+      }
+
+      // Add value placeholder for input options
+      optionFlag += ' <value>';
+
+      createCommand.option(optionFlag, optionConfig.description);
+    }
+  } catch (error) {
+    // If we can't load template options, just continue with basic options
+    console.warn(
+      'Warning: Could not load template options for dynamic CLI setup'
+    );
+  }
+
+  createCommand.action(async (template, options) => {
     await pqs.createProject(template, options);
   });
 
-// Default help command
-program
-  .command('help')
-  .alias('h')
-  .description('Show help')
-  .action(() => {
-    program.help();
-  });
+  // Default help command
+  program
+    .command('help')
+    .alias('h')
+    .description('Show help')
+    .action(() => {
+      program.help();
+    });
 
-// Show help by default if no command provided
-if (process.argv.length <= 2) {
-  program.help();
-} else {
-  program.parse();
+  // Show help by default if no command provided
+  if (process.argv.length <= 2) {
+    program.help();
+  } else {
+    program.parse();
+  }
 }
+
+// Initialize CLI
+setupCLI().catch(error => {
+  console.error('Failed to setup CLI:', error.message);
+  process.exit(1);
+});

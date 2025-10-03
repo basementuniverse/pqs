@@ -36,6 +36,8 @@ pqs c <template-name> [options]
 - `--force` or `-f`: Force the creation of the project even if the output directory is not empty.
 - `--dry-run` or `-d`: Perform a dry run, showing what would be done without actually creating the project.
 
+If we specify an output directory, template files will be placed directly in this directory. If we do not specify an output directory, a new directory will be created with the name of the project (as provided by the user in `projectName`, `name`, or `project` values). If a project name cannot be determined, we use `new-project` as the directory name.
+
 ## Global configuration
 
 PQS uses a global configuration file to define locations for templates and other settings. The configuration file should be placed in one of the following locations (we will check them in this order):
