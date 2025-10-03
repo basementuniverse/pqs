@@ -535,7 +535,7 @@ async function setupCLI() {
   program
     .name('pqs')
     .description('PQS - Project Quick Start: Create projects from templates')
-    .version('1.0.0');
+    .version(pkg.version);
 
   program
     .command('version')
