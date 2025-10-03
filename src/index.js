@@ -8,6 +8,7 @@ const os = require('os');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const { glob } = require('glob');
+const pkg = require('../package.json');
 
 const execAsync = promisify(exec);
 
@@ -476,7 +477,7 @@ program
   .alias('v')
   .description('Show version')
   .action(() => {
-    console.log('PQS version 1.0.0');
+    console.log(`PQS version ${pkg.version}`);
   });
 
 program
