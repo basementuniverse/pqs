@@ -152,6 +152,81 @@ module.exports = {
 };
 ```
 
+## Question types
+
+### `input`
+
+A simple text input field.
+
+We can validate the input by providing a `validate` function that returns `true` if the input is valid, or a string with an error message if the input is invalid.
+
+### `confirm`
+
+A yes/no question.
+
+### `select`
+
+A multiple-choice question where the user can select one option from a list.
+
+`choices` can be an array of strings or an array of objects:
+
+```ts
+type SelectChoice = string | {
+  name: string;
+  value: string;
+  description?: string;
+  disabled?: boolean;
+};
+```
+
+If a `choices` entry is the string `---`, a separator line will be added to the list of choices.
+
+### `checkbox`
+
+A multiple-choice question where the user can select multiple options from a list.
+
+`choices` can be an array of strings or an array of objects:
+
+```ts
+type CheckboxChoice = string | {
+  name: string;
+  value: string;
+  description?: string;
+  disabled?: boolean;
+  checked?: boolean;
+};
+```
+
+If a `choices` entry is the string `---`, a separator line will be added to the list of choices.
+
+## Step types
+
+Each step in the `steps` array must have a `type` property, which can be one of the following types. Additionally, a step can have an optional `condition` property, which is a function that takes the user's answers as an argument and returns `true` if the step should be executed, or `false` if it should be skipped. A step can also have an optional `description` property, which is a string that will be displayed to the user before executing the step.
+
+### `replace`
+
+Replace placeholders in the specified files.
+
+`files` is an array of glob patterns specifying which files to process. See the "Template substitutions" section below for details on how placeholders work.
+
+### `command`
+
+Run a shell command.
+
+`command` is a string containing the command to run.
+
+### `copy`
+
+Copy additional files or directories from the template to the new project.
+
+`source` is the path to the file or directory in the template (relative to the template root).
+
+`destination` is the path to the file or directory in the new project (relative to the project root).
+
+If `destination` is not provided, the file or directory will be copied to the same relative path in the new project.
+
+`exclude` is an optional array of glob patterns to exclude certain files or directories from being copied.
+
 ## Template substitutions
 
 We can substitute placeholders in any text file within the template. Placeholders are defined using double curly braces, like this: `{{PQS:placeholderName}}`.

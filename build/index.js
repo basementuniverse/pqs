@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 const { Command } = require('commander');
-const { input, confirm, select } = require('@inquirer/prompts');
+const {
+  input,
+  confirm,
+  select,
+  checkbox,
+  Separator,
+} = require('@inquirer/prompts');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
@@ -256,23 +262,46 @@ class PQS {
 
       try {
         let answer;
-        if (question.type === 'confirm') {
-          answer = await confirm({
-            message: question.message,
-            default: question.default,
-          });
-        } else if (question.type === 'input') {
-          answer = await input({
-            message: question.message,
-            default: question.default,
-            validate: question.validate,
-          });
-        } else if (question.type === 'select') {
-          answer = await select({
-            message: question.message,
-            choices: question.choices,
-            default: question.default,
-          });
+        switch (question.type) {
+          case 'confirm':
+            answer = await confirm({
+              message: question.message,
+              default: question.default,
+            });
+            break;
+          case 'input':
+            answer = await input({
+              message: question.message,
+              default: question.default,
+              validate: question.validate,
+            });
+            break;
+          case 'select':
+            answer = await select({
+              message: question.message,
+              choices: question.choices.map(choice => {
+                if (typeof choice === 'string' && choice === '---') {
+                  return new Separator();
+                }
+                return choice;
+              }),
+              default: question.default,
+            });
+            break;
+          case 'checkbox':
+            answer = await checkbox({
+              message: question.message,
+              choices: question.choices.map(choice => {
+                if (typeof choice === 'string' && choice === '---') {
+                  return new Separator();
+                }
+                return choice;
+              }),
+              default: question.default,
+            });
+            break;
+          default:
+            throw new Error(`Unknown question type: ${question.type}`);
         }
 
         answers[question.name] = answer;
@@ -409,6 +438,92 @@ class PQS {
     }
   }
 
+  // Process copy steps
+  async processCopyStep(
+    step,
+    templatePath,
+    outputPath,
+    answers,
+    dryRun = false
+  ) {
+    // Check condition if present
+    if (step.condition && !step.condition(answers)) {
+      return;
+    }
+
+    const source = step.source;
+    const destination = step.destination || source;
+    const excludePatterns = step.exclude || [];
+
+    const sourcePath = path.join(templatePath, source);
+    const destPath = path.join(outputPath, destination);
+
+    if (dryRun) {
+      console.log(`  Copy step would copy '${source}' to '${destination}'`);
+      if (excludePatterns.length > 0) {
+        console.log(`    Excluding: ${excludePatterns.join(', ')}`);
+      }
+      return;
+    }
+
+    try {
+      // Check if source exists
+      if (!(await fs.pathExists(sourcePath))) {
+        console.warn(`Warning: Source path '${source}' not found in template`);
+        return;
+      }
+
+      const sourceStats = await fs.stat(sourcePath);
+
+      if (sourceStats.isDirectory()) {
+        // Copy directory with exclusions
+        const filesToCopy = await this.getFilesToCopy(
+          sourcePath,
+          excludePatterns
+        );
+
+        for (const file of filesToCopy) {
+          const srcFilePath = path.join(sourcePath, file);
+          const destFilePath = path.join(destPath, file);
+
+          await fs.ensureDir(path.dirname(destFilePath));
+          await fs.copy(srcFilePath, destFilePath);
+        }
+      } else {
+        // Copy single file
+        await fs.ensureDir(path.dirname(destPath));
+        await fs.copy(sourcePath, destPath);
+      }
+    } catch (error) {
+      console.error(`Failed to copy '${source}': ${error.message}`);
+    }
+  }
+
+  // Helper method to get files to copy with exclusions
+  async getFilesToCopy(sourcePath, excludePatterns) {
+    const allFiles = await glob('**/*', {
+      cwd: sourcePath,
+      dot: true,
+      nodir: true,
+    });
+
+    if (excludePatterns.length === 0) {
+      return allFiles;
+    }
+
+    // Use minimatch to filter files based on exclude patterns
+    const { minimatch } = require('minimatch');
+
+    return allFiles.filter(file => {
+      return !excludePatterns.some(pattern => {
+        return (
+          minimatch(file, pattern) ||
+          minimatch(file, pattern.replace('/**', ''))
+        );
+      });
+    });
+  }
+
   // Collect all unique options from all templates
   async collectTemplateOptions() {
     await this.loadConfig();
@@ -535,6 +650,14 @@ class PQS {
         } else if (step.type === 'command') {
           await this.processCommandStep(
             step,
+            outputPath,
+            answers,
+            options.dryRun
+          );
+        } else if (step.type === 'copy') {
+          await this.processCopyStep(
+            step,
+            template.path,
             outputPath,
             answers,
             options.dryRun
