@@ -301,12 +301,33 @@ class PQS {
       nodir: true,
     });
 
+    // Convert excludePatterns to proper glob patterns if they aren't already
+    const normalizedExcludePatterns = excludePatterns.map(pattern => {
+      // If it's already a glob pattern (contains * ? [ ]), leave it as is
+      if (/[*?[\]]/.test(pattern)) {
+        return pattern;
+      }
+
+      // For simple names like '.git', make it match directories specifically
+      // This prevents '.git' from matching '.gitignore'
+      if (pattern.startsWith('.') && !pattern.includes('/')) {
+        return `**/${pattern}/**`;
+      }
+
+      // For other simple patterns, make them match anywhere in the path
+      return `**/${pattern}/**`;
+    });
+
+    // Use minimatch (which glob uses internally) to filter files
+    const { minimatch } = require('minimatch');
+
     const filesToCopy = allFiles.filter(file => {
-      return !excludePatterns.some(pattern => {
-        if (pattern.startsWith('!')) {
-          return false; // Handle negation patterns separately if needed
-        }
-        return file.includes(pattern) || path.basename(file) === pattern;
+      return !normalizedExcludePatterns.some(pattern => {
+        // Check if the file path matches the exclude pattern
+        return (
+          minimatch(file, pattern) ||
+          minimatch(file, pattern.replace('/**', ''))
+        );
       });
     });
 

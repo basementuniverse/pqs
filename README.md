@@ -114,10 +114,15 @@ module.exports = {
   ],
 
   // Exclude certain files or directories from being copied from the template to the new project
+  // These are glob patterns, e.g.:
+  // - 'node_modules/**' would exclude the node_modules directory and all its contents
+  // - '*.log' would exclude all .log files in the root of the template
+  // - '**/*.log' would exclude all .log files in the template and its subdirectories
+  // - '!README.md' would exclude everything except README.md (i.e. README.md would be included)
   exclude: [
     'pqs.config.js',
-    'node_modules',
-    '.git',
+    '**/node_modules/**',
+    '**/.git/**',
     '.DS_Store',
   ],
 
