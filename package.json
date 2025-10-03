@@ -4,15 +4,15 @@
   "description": "PQS - Project Quick Start: Create projects from templates",
   "author": "Gordon Larrigan <gordonlarrigan@gmail.com> (https://gordonlarrigan.com)",
   "license": "MIT",
-  "main": "build/index.js",
+  "main": "src/index.js",
   "bin": {
-    "pqs": "build/index.js"
+    "pqs": "src/index.js"
   },
   "files": [
-    "build"
+    "src"
   ],
   "scripts": {
-    "build": "mkdir -p build && cp src/index.js build/index.js && chmod +x build/index.js"
+    "make-executable": "chmod +x src/index.js"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.8.6",

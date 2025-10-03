@@ -43,8 +43,9 @@ If we specify an output directory, template files will be placed directly in thi
 PQS uses a global configuration file to define locations for templates and other settings. The configuration file should be placed in one of the following locations (we will check them in this order):
 
 1. `./pqs.config.json` (in the current working directory)
-2. `~/.pqs.config.json` (in the user's home directory)
-3. `/etc/pqs.config.json` (system-wide configuration)
+2. `~/.pqs/pqs.config.json` (in the PQS directory)
+3. `~/.pqs.config.json` (in the user's home directory)
+4. `/etc/pqs.config.json` (system-wide configuration)
 
 The configuration file should look something like this:
 
@@ -58,7 +59,26 @@ The configuration file should look something like this:
 
 #### `templateLocations`
 
-An array of directories where PQS will look for project templates. We're basically searching for `pqs.config.js` files in these directories, or in their immediate subdirectories. Every directory where we find such a file is considered a template.
+An array of directories or Git repository URLs where PQS will look for project templates. For local directories, we search for `pqs.config.js` files in these directories or their immediate subdirectories. For Git repositories, we clone them to a local cache and then search for templates.
+
+Supported location types:
+- **Local directories**: `~/templates`, `/path/to/templates`
+- **Git repositories**: `https://github.com/user/templates.git`, `git@github.com:user/templates.git`
+- **Git repositories with branches**: `https://github.com/user/templates.git#main`
+
+Examples:
+```json
+{
+  "templateLocations": [
+    "~/templates",
+    "https://github.com/user/pqs-templates.git",
+    "https://gitlab.com/user/templates.git#develop",
+    "git@github.com:user/private-templates.git"
+  ]
+}
+```
+
+Git repositories are cached in `~/.pqs/cache/` for faster subsequent access.
 
 ## Template configuration
 
