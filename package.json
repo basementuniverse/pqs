@@ -1,0 +1,21 @@
+{
+  "name": "@basementuniverse/pqs",
+  "version": "1.0.0",
+  "description": "PQS - Project Quick Start: Create projects from templates",
+  "main": "build/index.js",
+  "bin": {
+    "pqs": "build/index.js"
+  },
+  "scripts": {
+    "build": "mkdir -p build && cp src/index.js build/index.js && chmod +x build/index.js"
+  },
+  "author": "Gordon Larrigan <gordonlarrigan@gmail.com> (https://gordonlarrigan.com)",
+  "license": "MIT",
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.6",
+    "commander": "^14.0.1",
+    "fs-extra": "^11.3.2",
+    "glob": "^11.0.3"
+  },
+  "devDependencies": {}
+}
