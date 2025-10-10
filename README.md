@@ -80,14 +80,13 @@ module.exports = {
   },
 
   // Questions to ask the user when creating a new project
-  // If a question has an argument/shortArgument and the user has provided it on the command line, we will skip the question
   questions: [
     {
       type: 'input',
       name: 'projectName',
       message: 'Project name:',
       argument: 'name',
-      shortArgument: '-n',
+      shortArgument: 'n',
       validate: (input) => input.length > 0 || 'Project name is required',
     },
     {
@@ -95,21 +94,21 @@ module.exports = {
       name: 'description',
       message: 'Project description:',
       argument: 'description',
-      shortArgument: '-d',
+      shortArgument: 'd',
     },
     {
       type: 'input',
       name: 'author',
       message: 'Author:',
       argument: 'author',
-      shortArgument: '-a',
+      shortArgument: 'a',
     },
     {
       type: 'confirm',
       name: 'initialiseGit',
       message: 'Initialise git repository?',
       argument: 'git',
-      shortArgument: '-g',
+      shortArgument: 'g',
     },
   ],
 
@@ -144,12 +143,41 @@ module.exports = {
     },
     {
       type: 'command',
-      condition: (answers) => answers.initialiseGit,
       command: 'git init',
       description: 'Initializing git repository...',
+      condition: (answers) => answers.initialiseGit,
     },
   ],
 };
+```
+
+## Questions
+
+```js
+{
+  // The type of question to ask (see below)
+  type: 'input',
+
+  // The variable name to store the answer in
+  name: 'projectName',
+
+  // The question to display to the user
+  message: 'Project name:',
+
+  // An optional command-line argument to use for this question
+  // If this is provided and the user has specified a value for this argument, we will use that value instead of asking the question
+  argument: 'name',
+
+  // An optional short version of the command-line argument (single character)
+  shortArgument: 'n',
+
+  // An optional function to validate the answer
+  // The function should return true if the answer is valid, or a string with an error message if the answer is invalid
+  validate: (input) => input.length > 0 || 'Project name is required',
+
+  // Optional function to determine if the question should be asked based on previous answers
+  condition: (answers) => true,
+}
 ```
 
 ## Question types
@@ -157,8 +185,6 @@ module.exports = {
 ### `input`
 
 A simple text input field.
-
-We can validate the input by providing a `validate` function that returns `true` if the input is valid, or a string with an error message if the input is invalid.
 
 ### `confirm`
 
@@ -199,9 +225,22 @@ type CheckboxChoice = string | {
 
 If a `choices` entry is the string `---`, a separator line will be added to the list of choices.
 
-## Step types
+## Steps
 
-Each step in the `steps` array must have a `type` property, which can be one of the following types. Additionally, a step can have an optional `condition` property, which is a function that takes the user's answers as an argument and returns `true` if the step should be executed, or `false` if it should be skipped. A step can also have an optional `description` property, which is a string that will be displayed to the user before executing the step.
+```js
+{
+  // The type of step to execute (see below)
+  type: 'command',
+
+  // A description of the step (will be displayed to the user before executing the step)
+  description: 'Installing dependencies...',
+
+  // Optional function to determine if the step should be executed based on answers
+  condition: (answers) => true,
+}
+```
+
+## Step types
 
 ### `replace`
 
@@ -245,3 +284,16 @@ Some transformations and aliases are also available:
 - `{{PQS:SLUG(placeholderName)}}`: Converts the value to a URL-friendly slug.
 - `{{PQS:DATE(pattern)}}`: Inserts the current date/time formatted according to the provided pattern (using `date-fns` formatting).
 - `{{PQS:UUID()}}`: Inserts a newly generated UUID.
+- `{{PQS:UUID_FIXED(n)}}`: Inserts and caches a UUID for the current project based on the provided fixed name `n`. This ensures that the same UUID is used consistently throughout the project wherever this placeholder appears.
+
+We can include or omit sections of text based on boolean values using the following syntax:
+
+```
+{{#PQS:conditionName}}
+This text will be included if 'conditionName' is truthy.
+{{/PQS:conditionName}}
+
+{{^PQS:conditionName}}
+This text will be included if 'conditionName' is falsey.
+{{/PQS:conditionName}}
+```

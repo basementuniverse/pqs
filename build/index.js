@@ -24,6 +24,7 @@ class PQS {
   constructor() {
     this.config = null;
     this.templates = new Map();
+    this.uuidCache = []; // Cache for fixed UUIDs
   }
 
   // Load configuration from various locations
@@ -164,6 +165,24 @@ class PQS {
     return uuid();
   }
 
+  // Generate or retrieve cached UUID by index
+  generateFixedUUID(index) {
+    // Ensure index is a valid non-negative integer
+    const idx = parseInt(index, 10);
+    if (isNaN(idx) || idx < 0) {
+      throw new Error(
+        `Invalid UUID_FIXED index: ${index}. Index must be a non-negative integer.`
+      );
+    }
+
+    // If UUID doesn't exist at this index, generate and cache it
+    if (this.uuidCache[idx] === undefined) {
+      this.uuidCache[idx] = uuid();
+    }
+
+    return this.uuidCache[idx];
+  }
+
   // Format date using date-fns
   formatDate(pattern) {
     const now = new Date();
@@ -203,30 +222,85 @@ class PQS {
     }
   }
 
+  // Process optional sections (conditional content inclusion)
+  processOptionalSections(content, values) {
+    // Process sections recursively, starting with the outermost sections
+    let processedContent = content;
+    let hasChanges = true;
+
+    // Keep processing until no more sections are found (handles nested sections)
+    while (hasChanges) {
+      hasChanges = false;
+
+      // Match conditional sections: {{#PQS:variableName}} content {{/PQS:variableName}}
+      processedContent = processedContent.replace(
+        /\{\{#PQS:([^}]+)\}\}([\s\S]*?)\{\{\/PQS:\1\}\}/g,
+        (match, variableName, sectionContent) => {
+          hasChanges = true;
+          const value = values[variableName];
+
+          // Include section if value is truthy
+          if (value && value !== 'false' && value !== '0' && value !== 0) {
+            return sectionContent;
+          } else {
+            return '';
+          }
+        }
+      );
+
+      // Match inverted conditional sections: {{^PQS:variableName}} content {{/PQS:variableName}}
+      processedContent = processedContent.replace(
+        /\{\{\^PQS:([^}]+)\}\}([\s\S]*?)\{\{\/PQS:\1\}\}/g,
+        (match, variableName, sectionContent) => {
+          hasChanges = true;
+          const value = values[variableName];
+
+          // Include section if value is falsy
+          if (!value || value === 'false' || value === '0' || value === 0) {
+            return sectionContent;
+          } else {
+            return '';
+          }
+        }
+      );
+    }
+
+    return processedContent;
+  }
+
   // Perform placeholder substitutions
   performSubstitutions(content, values) {
-    return content.replace(/\{\{PQS:([^}]+)\}\}/g, (match, placeholder) => {
-      // Handle transformations
-      const transformMatch = placeholder.match(/^(\w+)\(([^)]+)\)$/);
-      if (transformMatch) {
-        const [, transform, arg] = transformMatch;
+    // First process optional sections
+    let processedContent = this.processOptionalSections(content, values);
 
-        if (transform === 'DATE') {
-          return this.formatDate(arg);
-        } else if (transform === 'UUID') {
-          return this.generateUUID();
-        } else if (values[arg] !== undefined) {
-          return this.transformText(String(values[arg]), transform);
+    // Then perform regular placeholder replacements
+    return processedContent.replace(
+      /\{\{PQS:([^}]+)\}\}/g,
+      (match, placeholder) => {
+        // Handle transformations
+        const transformMatch = placeholder.match(/^(\w+)\(([^)]+)\)$/);
+        if (transformMatch) {
+          const [, transform, arg] = transformMatch;
+
+          if (transform === 'DATE') {
+            return this.formatDate(arg);
+          } else if (transform === 'UUID') {
+            return this.generateUUID();
+          } else if (transform === 'UUID_FIXED') {
+            return this.generateFixedUUID(arg);
+          } else if (values[arg] !== undefined) {
+            return this.transformText(String(values[arg]), transform);
+          }
         }
-      }
 
-      // Direct placeholder replacement
-      if (values[placeholder] !== undefined) {
-        return String(values[placeholder]);
-      }
+        // Direct placeholder replacement
+        if (values[placeholder] !== undefined) {
+          return String(values[placeholder]);
+        }
 
-      return match; // Leave unchanged if no replacement found
-    });
+        return match; // Leave unchanged if no replacement found
+      }
+    );
   }
 
   // Get command line arguments for questions
@@ -257,6 +331,11 @@ class PQS {
       }
       if (cliArgs[question.name] !== undefined) {
         answers[question.name] = cliArgs[question.name];
+        continue;
+      }
+
+      // Check condition if present
+      if (question.condition && !question.condition(answers)) {
         continue;
       }
 
@@ -625,7 +704,7 @@ class PQS {
 
     // Copy template files
     console.log('\nCopying template files...');
-    const copiedFiles = await this.copyTemplate(
+    await this.copyTemplate(
       template.path,
       outputPath,
       template.exclude || [],
